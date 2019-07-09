@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from astropy.io import fits
 import hcipy as hc
-from hcipy.optics.segmented_mirror import SegmentedMirror
+from hcipy import SegmentedDeformableMirror
 
 
 class SegmentedTelescopeAPLC:
@@ -17,11 +17,8 @@ class SegmentedTelescopeAPLC:
     ----------
     aper : Field
         Telescope aperture.
-    indexed_aperture : Field
-        The *indexed* segmented aperture of the mirror, all pixels each segment being filled with its number for
-        segment identification. Segment gaps must be strictly zero.
-    seg_pos : CartesianGrid(UnstructuredCoords)
-        Segment positions of the aperture.
+    seg_pos : ModeBasis
+        A mode basis with all segments.
     apod : Field
         Apodizer
     lyots : Field
@@ -34,8 +31,8 @@ class SegmentedTelescopeAPLC:
         wavelength, diameter, image size in lambda/D, FPM radius
     """
 
-    def __init__(self, aper, indexed_aperture, seg_pos, apod, lyotst, fpm, focal_grid, params):
-        self.sm = SegmentedMirror(indexed_aperture=indexed_aperture, seg_pos=seg_pos)
+    def __init__(self, aper, seg_pos, apod, lyotst, fpm, focal_grid, params):
+        self.sm = SegmentedDeformableMirror(seg_pos)
         self.aper = aper
         self.apodizer = apod
         self.lyotstop = lyotst
@@ -45,9 +42,9 @@ class SegmentedTelescopeAPLC:
         self.imlamD = params['imlamD']
         self.fpm_rad = params['fpm_rad']
         self.lamDrad = self.wvln / self.diam
-        self.coro = hc.LyotCoronagraph(indexed_aperture.grid, fpm, lyotst)
-        self.prop = hc.FraunhoferPropagator(indexed_aperture.grid, focal_grid)
-        self.coro_no_ls = hc.LyotCoronagraph(indexed_aperture.grid, fpm)
+        self.coro = hc.LyotCoronagraph(aper.grid, fpm, lyotst)
+        self.prop = hc.FraunhoferPropagator(aper.grid, focal_grid)
+        self.coro_no_ls = hc.LyotCoronagraph(aper.grid, fpm)
         self.wf_aper = hc.Wavefront(aper, wavelength=self.wvln)
         self.focal_det = focal_grid
 
@@ -58,6 +55,10 @@ class SegmentedTelescopeAPLC:
         ----------
         ref : bool
             Keyword for additionally returning the refrence PSF without the FPM.
+        display_intermediate : bool
+            Keyword for the display of all intermediate planes.
+        return_intermediate : bool
+            Keyword for additionally returning the intermediate planes.
         Returns:
         --------
         wf_im_coro.intensity : Field
@@ -66,7 +67,7 @@ class SegmentedTelescopeAPLC:
         wf_im_ref.intensity : Field, optional
             Reference image without FPM.
         intermediates : dict, optional
-            Intermediate plane intensity images; except for full wavefront on segmented mirror.
+            Intermediate plane intensity images; except for full wavefront on segmented mirror, which is the phase.
         """
 
         # Create fake FPM for plotting
@@ -150,11 +151,11 @@ class SegmentedTelescopeAPLC:
         self.sm.flatten()
 
     def set_segment(self, segid, piston, tip, tilt):
-        self.sm.set_segment(segid, piston, tip, tilt)
+        self.sm.set_segment_actuators(segid, piston, tip, tilt)
 
     def apply_aberrations(self, aber_array):
         for vals in aber_array:
-            self.sm.set_segment(vals[0], vals[1], vals[2], vals[3])
+            self.sm.set_segment_actuators(vals[0], vals[1], vals[2], vals[3])
 
     def forward(self, wavefront):
         raise NotImplementedError()
@@ -172,6 +173,8 @@ class LuvoirAPLC(SegmentedTelescopeAPLC):
         Path to input files: apodizer, aperture, indexed aperture, Lyot stop.
     apod_design : string
         Choice of apodizer design from May 2019 delivery. "small", "medium" or "large".
+    samp : float
+        PSF sampling
     """
     def __init__(self, input_dir, apod_design, samp):
         self.nseg = 120

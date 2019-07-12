@@ -59,6 +59,7 @@ class SegmentedTelescopeAPLC:
             Keyword for the display of all intermediate planes.
         return_intermediate : bool
             Keyword for additionally returning the intermediate planes.
+
         Returns:
         --------
         wf_im_coro.intensity : Field
@@ -188,39 +189,24 @@ class LuvoirAPLC(SegmentedTelescopeAPLC):
                                      'fname': '0_LUVOIR_N1000_FPM682M0250_IWA0672_OWA02372_C10_BW10_Nlam5_LS_IDD0120_OD0982_no_ls_struts.fits'},
                           'large': {'pxsize': 1000, 'fpm_rad': 13.38, 'fpm_px': 400, 'iwa': 13.28, 'owa': 46.88,
                                     'fname': '0_LUVOIR_N1000_FPM1338M0400_IWA1328_OWA04688_C10_BW10_Nlam5_LS_IDD0120_OD0982_no_ls_struts.fits'}}
-        self.imlamD = 1.2*self.apod_dict[apod_design]['owa']
+        self.imlamD = 1.2 * self.apod_dict[apod_design]['owa']
 
         # Pupil plane optics
-        aper_path = 'inputs/TelAp_LUVOIR_gap_pad01_bw_ovsamp04_N1000.fits'
-        aper_ind_path = 'inputs/TelAp_LUVOIR_gap_pad01_bw_ovsamp04_N1000_indexed.fits'
         apod_path = os.path.join(input_dir, 'luvoir_stdt_baseline_bw10', apod_design + '_fpm', 'solutions',
                                  self.apod_dict[apod_design]['fname'])
         ls_fname = 'inputs/LS_LUVOIR_ID0120_OD0982_no_struts_gy_ovsamp4_N1000.fits'
 
-        pup_read = hc.read_fits(os.path.join(input_dir, aper_path))
-        aper_ind_read = hc.read_fits(os.path.join(input_dir, aper_ind_path))
         apod_read = hc.read_fits(os.path.join(input_dir, apod_path))
         ls_read = hc.read_fits(os.path.join(input_dir, ls_fname))
 
         pupil_grid = hc.make_pupil_grid(dims=self.apod_dict[apod_design]['pxsize'], diameter=self.diam)
 
-        self.aperture = hc.Field(pup_read.ravel(), pupil_grid)
-        self.aper_ind = hc.Field(aper_ind_read.ravel(), pupil_grid)
+        self.aperture, self.seg_pos = hc.make_luvoir_a_aperture(return_segments=True)
+        self.aperture = hc.evaluate_supersampled(self.aperture, pupil_grid, 2)
+        self.seg_pos = hc.evaluate_supersampled(self.seg_pos, pupil_grid, 2)
+
         self.apod = hc.Field(apod_read.ravel(), pupil_grid)
         self.ls = hc.Field(ls_read.ravel(), pupil_grid)
-
-        # Load segment positions from fits header
-        hdr = fits.getheader(os.path.join(input_dir, aper_ind_path))
-
-        poslist = []
-        for i in range(self.nseg):
-            segname = 'SEG' + str(i + 1)
-            xin = hdr[segname + '_X']
-            yin = hdr[segname + '_Y']
-            poslist.append((xin, yin))
-
-        poslist = np.transpose(np.array(poslist))
-        self.seg_pos = hc.CartesianGrid(poslist)
 
         # Focal plane mask
         samp_foc = self.apod_dict[apod_design]['fpm_px'] / (self.apod_dict[apod_design]['fpm_rad'] * 2)
@@ -235,10 +221,5 @@ class LuvoirAPLC(SegmentedTelescopeAPLC):
                          'fpm_rad': self.apod_dict[apod_design]['fpm_rad']}
 
         # Initialize the general segmented telescope with APLC class, includes the SM
-        super().__init__(aper=self.aperture, indexed_aperture=self.aper_ind, seg_pos=self.seg_pos, apod=self.apod,
-                         lyotst=self.ls, fpm=self.fpm, focal_grid=self.focal_det, params=luvoir_params)
-
-        # Propagators
-        self.coro = hc.LyotCoronagraph(pupil_grid, self.fpm, self.ls)
-        self.prop = hc.FraunhoferPropagator(pupil_grid, self.focal_det)
-        self.coro_no_ls = hc.LyotCoronagraph(pupil_grid, self.fpm)
+        super().__init__(aper=self.aperture, seg_pos=self.seg_pos, apod=self.apod, lyotst=self.ls, fpm=self.fpm,
+                         focal_grid=self.focal_det, params=luvoir_params)

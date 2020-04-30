@@ -26,6 +26,8 @@ class SegmentedTelescopeAPLC:
         Apodizer
     lyots : Field
         Lyot stop
+    dm : Field
+        dm  wavefront
     fpm : fpm
         Focal plane mask
     focal_grid :
@@ -34,11 +36,12 @@ class SegmentedTelescopeAPLC:
         wavelength, diameter, image size in lambda/D, FPM radius
     """
 
-    def __init__(self, aper, indexed_aperture, seg_pos, apod, lyotst, fpm, focal_grid, params):
+    def __init__(self, aper, indexed_aperture, seg_pos, apod, lyotst,fpm, focal_grid, params):
         self.sm = SegmentedMirror(indexed_aperture=indexed_aperture, seg_pos=seg_pos)
         self.aper = aper
         self.apodizer = apod
         self.lyotstop = lyotst
+        #self.dm = dm
         self.fpm = fpm   #TODO: this is not actually used inside this class
         self.wvln = params['wavelength']
         self.diam = params['diameter']
@@ -228,10 +231,12 @@ class LuvoirAPLC(SegmentedTelescopeAPLC):
 
         pupil_grid = hc.make_pupil_grid(dims=self.apod_dict[apod_design]['pxsize'], diameter=self.diam)
 
+
         self.aperture = hc.Field(pup_read.ravel(), pupil_grid)
         self.aper_ind = hc.Field(aper_ind_read.ravel(), pupil_grid)
         self.apod = hc.Field(apod_read.ravel(), pupil_grid)
         self.ls = hc.Field(ls_read.ravel(), pupil_grid)
+        #self.dm = hc.Field(np.zeros([n_points,n_points]), pupil_grid)
 
         # Load segment positions from fits header
         hdr = fits.getheader(os.path.join(input_dir, aper_ind_path))
